@@ -2,7 +2,7 @@
 
 **Experimental prototype.** Adds music reconstructed from the Amiga release to the DOS version of Xenon II: Megablast, using Sound Blaster digital playback and retaining the original PC-speaker effects.
 
-**Hardware report:** pgeo101 tested it successfully on a real **386 with a PicoGUS in Sound Blaster mode**. Development testing also covered DOSBox with emulated SB16 and SB2 configurations. A full playthrough and original Creative ISA cards have not been verified.
+**Hardware report:** Tested successfully on a real **386 with a PicoGUS in Sound Blaster mode**. Development testing also covered DOSBox with emulated SB16 and SB2 configurations. A full playthrough and original Creative ISA cards have not been verified.
 
 Created with assistance from OpenAI Codex for reverse engineering, implementation, and emulator testing; real-machine testing by pgeo101. This is an unofficial fan experiment, unaffiliated with the original developers or publishers.
 

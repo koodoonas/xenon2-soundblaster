@@ -1,0 +1,16 @@
+game/
+assets/
+__pycache__/
+*.pyc
+*.adf
+*.ADF
+*.pcm
+*.PCM
+*.wav
+*.flac
+*.mp3
+*.bin
+*.EXE
+*.exe
+*.zip
+.DS_Store

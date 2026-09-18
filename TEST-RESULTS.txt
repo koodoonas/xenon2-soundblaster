@@ -1,0 +1,62 @@
+Experimental prototype: emulator test evidence
+
+Hardware follow-up: pgeo101 reported successful playback on a real 386 with PicoGUS in Sound Blaster mode. Exact settings and full-playthrough coverage were not supplied.
+
+
+finalgame-results.log
+X2SB prototype diagnostics (hexadecimal values)
+Base=00000220
+IRQ=00000007
+DMA=00000001
+DSP major/minor=00000405
+DMA interrupts=00000030
+PCM wraps=00000000
+DMA half fills=00000034
+Music starts=00000002
+Music stops=00000004
+Speaker FX requests=0000000C
+EMS errors=00000000
+EXEC error=00000000
+DMA physical address=00003300
+PCM byte count=00202095
+
+
+finalloop-results.log
+X2SB prototype diagnostics (hexadecimal values)
+Base=00000220
+IRQ=00000005
+DMA=00000003
+DSP major/minor=00000201
+DMA interrupts=00000015
+PCM wraps=00000001
+DMA half fills=00000017
+Music starts=00000001
+Music stops=00000001
+Speaker FX requests=00000000
+EMS errors=00000000
+EXEC error=00000000
+DMA physical address=00003300
+PCM byte count=00202095
+
+
+game-audit-result.txt
+Before: a5fe00f087e900f0e01200f0f400700000000000f8a403669d
+After: a5fe00f087e900f0e01200f0f400700000000000f8a403669d
+Identical: True
+
+Public setup tool test: reconstructed installation from supplied inputs; launcher and patched EXE byte-identical to tested prototype. Direct WAV-to-PCM rendering differs from the earlier audio conversion by approximately 0.592 unsigned 8-bit levels RMS. Regenerated track passed eight-second emulator playback with no EMS errors.
+X2SB prototype diagnostics (hexadecimal values)
+Base=00000220
+IRQ=00000007
+DMA=00000001
+DSP major/minor=00000405
+DMA interrupts=00000015
+PCM wraps=00000000
+DMA half fills=00000017
+Music starts=00000001
+Music stops=00000001
+Speaker FX requests=00000000
+EMS errors=00000000
+EXEC error=00000000
+DMA physical address=00003300
+PCM byte count=00202095

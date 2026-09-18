@@ -75,4 +75,4 @@ Please open an issue with CPU/speed, DOS version, EMS manager, sound device/firm
 
 Xenon II, its original code, artwork, music, and samples belong to their respective rights holders. Credits in the supplied game include The Bitmap Brothers, The Assembly Line, Bomb the Bass, and David Whittaker. No rights to the original game or music are granted by this project.
 
-No open-source license has been selected for the new project code yet. Public availability alone is not a blanket license. The original game assets must remain outside this repository.
+The new project code and documentation are licensed under the [MIT License](LICENSE), copyright (c) 2026 pgeo101. This license does not cover the original Xenon II game code, artwork, music, samples, or other third-party assets. Users must supply their own game files; the original game assets must remain outside this repository.

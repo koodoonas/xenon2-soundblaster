@@ -1,2 +1,2 @@
-@echo off
-X2SB.COM
+@ECHO OFF
+XENON2.COM

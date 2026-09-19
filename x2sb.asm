@@ -1,6 +1,6 @@
-; Xenon II Sound Blaster PCM launcher prototype. NASM, DOS .COM, 386+.
-; Original game copy calls INT 81h; native INT 80h retains PC speaker FX.
-; EMS holds the complete unsigned 8-bit mono PCM track. No DOS calls in IRQ.
+; Xenon II Sound Blaster music and digital effects launcher. NASM, DOS .COM, 386+.
+; INT 81h replaces all native audio. Four digital FX voices mix with music.
+; EMS holds unsigned music followed by signed effects. No DOS calls in IRQ.
 bits 16
 cpu 386
 org 100h
@@ -40,6 +40,19 @@ dsp_ok db 0
 dsp_major db 0
 dsp_minor db 0
 playing db 0
+music_on db 0
+speaker_bits db 0
+next_fx dw 0
+fx_state times 4 dd 0,0 ; absolute byte position, remaining samples
+fx_counts times 25 dw 0
+fx_invalid dw 0
+fx_mixed dd 0
+clipped dd 0
+fill_dest dw 0
+fx_left dw 0
+fx_chunk dw 0
+fx_di dw 0
+test_clock dw 0
 started db 0
 half dw 0
 mode db 0
@@ -54,18 +67,18 @@ fill_left dw 0
 fill_chunk dw 0
 exit_code db 0
 
-msg_title db 'Xenon II Sound Blaster prototype - loading PCM into EMS...',13,10,'$'
-msg_ready db 'Sound Blaster ready. Launching X2SB.EXE.',13,10,'$'
+msg_title db 'Xenon II Sound Blaster music + digital FX - loading EMS...',13,10,'$'
+msg_ready db 'Sound Blaster ready. Launching X2GAME.EXE.',13,10,'$'
 msg_test db 'PCM test: eight seconds (Esc to stop).',13,10,'$'
 msg_done db 'Sound Blaster stopped; resources restored. See X2SB.LOG.',13,10,'$'
 msg_ems db 'EMS unavailable or insufficient: enable at least 3 MB EMS.',13,10,'$'
-msg_file db 'Cannot load X2MUSIC.PCM (raw unsigned 8-bit mono PCM).',13,10,'$'
+msg_file db 'Missing or invalid X2AUDIO.PCM music/effect bank.',13,10,'$'
 msg_memory db 'Not enough conventional memory for the DMA buffer.',13,10,'$'
 msg_sb db 'Sound Blaster DSP 2.0+ not detected at BLASTER base address.',13,10,'$'
 msg_config db 'Supported BLASTER settings: IRQ 5 or 7; DMA 0, 1 or 3.',13,10,'$'
 msg_exec db 'Could not execute X2SB.EXE. See X2SB.LOG.',13,10,'$'
-file_pcm db 'X2MUSIC.PCM',0
-file_exe db 'X2SB.EXE',0
+file_pcm db 'X2AUDIO.PCM',0
+file_exe db 'X2GAME.EXE',0
 file_log db 'X2SB.LOG',0
 blaster_name db 'BLASTER='
 empty_tail db 0,13
@@ -80,6 +93,9 @@ start:
  mov sp,stack_end
  sti
  cld
+ in al,61h
+ and al,3
+ mov [speaker_bits],al
  mov bx,(resident_end-$$+100h+15)/16
  mov ah,4ah
  int 21h
@@ -103,6 +119,16 @@ start:
 .next_arg:
  loop .scan_args
 .args_done:
+ mov al,[83h]
+ or al,20h
+ cmp al,'f'
+ jne .mix_mode
+ mov byte [mode],3
+.mix_mode:
+ cmp al,'m'
+ jne .config
+ mov byte [mode],4
+.config:
  call parse_blaster
  jc error_config
  mov dx,msg_title
@@ -127,6 +153,13 @@ start:
  jb error_sb
  call install_irq
  call install_hook
+ call install_volume
+ in al,61h
+ and al,0fch
+ out 61h,al
+ call sb_start
+ cmp word [ems_errors],0
+ jne finish
  cmp byte [mode],0
  jne standalone
  mov dx,msg_ready
@@ -160,17 +193,21 @@ start:
 standalone:
  cmp byte [mode],2
  jne .play
- mov eax,[file_size]
+ mov eax,music_bytes
  sub eax,6000
  jc error_file
  mov [start_pos],eax
 .play:
  mov dx,msg_test
  call print
- call sb_start
+ cmp byte [mode],3
+ je .no_music
+ call music_start
+.no_music:
  xor ax,ax
  mov es,ax
  mov bx,[es:046ch]
+ mov [test_clock],bx
 .wait:
  mov ah,1
  int 16h
@@ -181,7 +218,33 @@ standalone:
  je finish
 .clock:
  mov ax,[es:046ch]
- sub ax,bx
+ sub ax,[test_clock]
+ cmp ax,36
+ jb .duration
+ cmp word [fx_count],0
+ jne .second
+ mov ax,0302h
+ int 81h
+.second:
+ mov ax,[es:046ch]
+ sub ax,[test_clock]
+ cmp ax,73
+ jb .duration
+ cmp word [fx_count],1
+ jne .duration
+ mov ax,0306h
+ int 81h
+ cmp byte [mode],4
+ jne .duration
+ mov ax,0302h
+ int 81h
+ mov ax,0303h
+ int 81h
+ mov ax,0304h
+ int 81h
+.duration:
+ mov ax,[es:046ch]
+ sub ax,[test_clock]
  cmp ax,146
  jb .wait
  jmp finish
@@ -341,10 +404,8 @@ load_pcm:
  jc .bad
  mov [file_size],ax
  mov [file_size+2],dx
- cmp dword [file_size],8192
- jb .bad
- cmp dword [file_size],4000000
- ja .bad
+ cmp dword [file_size],audio_bytes
+ jne .bad
  xor cx,cx
  xor dx,dx
  mov ax,4200h
@@ -578,67 +639,109 @@ install_hook:
  ret
 
 sound_hook:
+ cmp ah,11h
+ je .query
+ pushad
+ push ds
+ push es
+ push cs
+ pop ds
+ cld
  cmp ah,2
  je .song
  cmp ah,1
  je .stop
+ cmp ah,3
+ je .effect
  cmp ah,4
  je .resume
- cmp ah,3
- jne .native
- inc word [cs:fx_count]
-.native:
- int 80h
- iret
+ jmp .done ; AH=0 timer is unnecessary: DMA clocks the mixer.
 .song:
  test al,al
- jnz .stop
- ; Keep original initialization/API side effects, then mute native music only.
- int 80h
- push ax
- mov ax,2000h
- int 80h
- pushad
- push ds
- push es
- push cs
- pop ds
- call sb_start
- pop es
- pop ds
- popad
- pop ax
- iret
+ jnz .endcue
+ call music_start
+ jmp .done
+.endcue:
+ call stop_audio
+ mov al,19
+ call effect_start
+ jmp .done
 .stop:
- pushad
- push ds
- push es
- push cs
- pop ds
- call sb_stop
+ call stop_audio
+ jmp .done
+.effect:
+ call effect_start
+ jmp .done
+.resume:
+ mov byte [music_on],1
+.done:
  pop es
  pop ds
  popad
- jmp .native
-.resume:
- cmp byte [cs:started],0
- je .native
- push ax
- mov al,0d4h
- call dsp_write
- mov byte [cs:playing],1
- pop ax
- int 80h
- push ax
- mov ax,2000h
- int 80h
- pop ax
  iret
+.query:
+ push bx
+ push dx
+ xor dx,dx
+ xor bx,bx
+.q:
+ or dx,[cs:fx_state+bx+4]
+ add bx,8
+ cmp bx,32
+ jb .q
+ test dx,dx
+ setnz al
+ pop dx
+ pop bx
+ iret
+
+music_start:
+ pushf
+ cli
+ inc word [start_count]
+ mov eax,[start_pos]
+ mov [song_pos],eax
+ mov byte [music_on],1
+ popf
+ ret
+stop_audio:
+ inc word [stop_count]
+ mov byte [music_on],0
+ xor bx,bx
+.loop:
+ mov dword [fx_state+bx+4],0
+ add bx,8
+ cmp bx,32
+ jb .loop
+ ret
+effect_start:
+ test al,al
+ jz .done
+ cmp al,25
+ jae .invalid
+ movzx bx,al
+ shl bx,1
+ inc word [fx_counts+bx]
+ shr bx,1
+ movzx si,byte [fx_map+bx]
+ shl si,3
+ mov bx,[next_fx]
+ mov eax,[fx_table+si]
+ mov [fx_state+bx],eax
+ mov eax,[fx_table+si+4]
+ mov [fx_state+bx+4],eax
+ add bx,8
+ and bx,31
+ mov [next_fx],bx
+ inc word [fx_count]
+.done: ret
+.invalid:
+ inc word [fx_invalid]
+ ret
 
 sb_start:
  pushf
  cli
- inc word [start_count]
  mov al,0d0h
  call dsp_write
  ; Mask the DMA channel before reprogramming.
@@ -651,7 +754,7 @@ sb_start:
  call fill_half
  cmp word [ems_errors],0
  jne .failed
- mov di,4096
+ mov di,512
  call fill_half
  cmp word [ems_errors],0
  jne .failed
@@ -669,7 +772,7 @@ sb_start:
  mov al,ah
  out dx,al
  inc dx
- mov ax,8191
+ mov ax,1023
  out dx,al
  mov al,ah
  out dx,al
@@ -687,7 +790,7 @@ sb_start:
  call dsp_write
  mov al,0ffh
  call dsp_write
- mov al,0fh ; interrupt every 4096 bytes
+ mov al,1 ; interrupt every 512 bytes
  call dsp_write
  mov al,0d1h
  call dsp_write
@@ -710,7 +813,6 @@ sb_start:
 sb_stop:
  pushf
  cli
- inc word [stop_count]
  mov byte [playing],0
  cmp byte [dsp_ok],0
  je .done
@@ -726,23 +828,25 @@ fill_half:
  push ds
  push es
  cld
- mov word [fill_left],4096
+ mov [fill_dest],di
+ mov word [fill_left],512
  mov dx,[ems_handle]
  mov ah,47h
  int 67h
  test ah,ah
  jnz .error_no_map
+ cmp byte [music_on],0
+ je .silence
 .copy:
  mov eax,[song_pos]
- cmp eax,[file_size]
+ cmp eax,music_bytes
  jb .not_end
  xor eax,eax
  mov [song_pos],eax
  inc dword [loop_count]
 .not_end:
  mov esi,eax
- and si,3fffh
- and esi,0ffffh
+ and esi,3fffh
  shr eax,14
  mov bx,ax
  mov dx,[ems_handle]
@@ -757,7 +861,7 @@ fill_half:
  mov ax,[fill_left]
 .page_limit:
  movzx ecx,ax
- mov eax,[file_size]
+ mov eax,music_bytes
  sub eax,[song_pos]
  cmp eax,ecx
  jae .size_limit
@@ -773,6 +877,106 @@ fill_half:
  add [song_pos],eax
  sub [fill_left],ax
  jnz .copy
+ jmp .mix
+.silence:
+ mov es,[dma_seg]
+ mov cx,512
+ mov al,128
+ rep stosb
+.mix:
+ ; A signed 16-bit accumulator avoids clipping between individual voices.
+ mov es,[dma_seg]
+ mov ax,[music_level]
+ shl ax,9
+ mov [music_table_offset],ax
+ mov ax,[fx_level]
+ shl ax,9
+ mov [fx_table_offset],ax
+ mov si,[fill_dest]
+ mov di,mix_buffer
+ mov cx,512
+.convert:
+ movzx bx,byte [es:si]
+ shl bx,1
+ add bx,[music_table_offset]
+ mov ax,[music_gain_table+bx]
+ mov [di],ax
+ inc si
+ add di,2
+ loop .convert
+ xor bp,bp
+.voice:
+ mov word [fx_left],512
+ mov word [fx_di],mix_buffer
+.fxcopy:
+ mov eax,[fx_state+bp+4]
+ test eax,eax
+ jz .next_voice
+ movzx ecx,word [fx_left]
+ cmp eax,ecx
+ jae .remaining
+ mov cx,ax
+.remaining:
+ mov eax,[fx_state+bp]
+ mov esi,eax
+ and esi,3fffh
+ mov ax,16384
+ sub ax,si
+ cmp cx,ax
+ jbe .page
+ mov cx,ax
+.page:
+ mov [fx_chunk],cx
+ mov eax,[fx_state+bp]
+ shr eax,14
+ mov bx,ax
+ mov dx,[ems_handle]
+ mov ax,4400h
+ int 67h
+ test ah,ah
+ jnz .error_map
+ mov es,[ems_frame]
+ mov di,[fx_di]
+ mov cx,[fx_chunk]
+.add:
+ movzx bx,byte [es:si]
+ shl bx,1
+ add bx,[fx_table_offset]
+ mov ax,[fx_gain_table+bx]
+ add [di],ax
+ inc si
+ add di,2
+ loop .add
+ mov [fx_di],di
+ movzx eax,word [fx_chunk]
+ add [fx_state+bp],eax
+ sub [fx_state+bp+4],eax
+ add [fx_mixed],eax
+ sub [fx_left],ax
+ jnz .fxcopy
+.next_voice:
+ add bp,8
+ cmp bp,32
+ jb .voice
+ mov es,[dma_seg]
+ mov di,[fill_dest]
+ mov si,mix_buffer
+ mov cx,512
+.output:
+ lodsw
+ cmp ax,-128
+ jge .high
+ mov ax,-128
+ inc dword [clipped]
+.high:
+ cmp ax,127
+ jle .write
+ mov ax,127
+ inc dword [clipped]
+.write:
+ add ax,128
+ stosb
+ loop .output
  inc dword [fill_count]
  mov ah,48h
  mov dx,[ems_handle]
@@ -790,10 +994,10 @@ fill_half:
  mov byte [playing],0
  mov al,0d0h
  call dsp_write
- ; Clear the remainder to avoid exposing stale data on a failed map.
  mov es,[dma_seg]
- mov cx,[fill_left]
- mov al,80h
+ mov di,[fill_dest]
+ mov cx,512
+ mov al,128
  rep stosb
 .done:
  pop es
@@ -823,7 +1027,7 @@ sb_isr:
  je .ack
  mov di,[half]
  call fill_half
- xor word [half],4096
+ xor word [half],512
 .ack:
  mov al,20h
  out 20h,al
@@ -837,6 +1041,7 @@ sb_isr:
  iret
 
 cleanup:
+ call remove_volume
  call sb_stop
  cmp byte [dsp_ok],0
  je .vectors
@@ -904,11 +1109,34 @@ cleanup:
  mov ah,49h
  int 21h
 .done:
+ in al,61h
+ and al,0fch
+ or al,[speaker_bits]
+ out 61h,al
  push cs
  pop es
  ret
 
 write_log:
+ call volume_log
+ mov eax,[fx_mixed]
+ mov di,log_mixed
+ call hex8
+ mov eax,[clipped]
+ mov di,log_clipped
+ call hex8
+ movzx eax,word [fx_invalid]
+ mov di,log_invalid
+ call hex8
+ xor si,si
+ mov di,log_counts
+.count:
+ movzx eax,word [fx_counts+si]
+ call hex8
+ inc di
+ add si,2
+ cmp si,50
+ jb .count
  movzx eax,word [sb_base]
  mov di,log_base
  call hex8
@@ -982,7 +1210,7 @@ hex8:
  inc di
  loop .loop
  ret
-log_start db 'X2SB prototype diagnostics (hexadecimal values)',13,10,'Base='
+log_start db 'X2SB digital FX diagnostics (hexadecimal values)',13,10,'Base='
 log_base db '00000000',13,10,'IRQ='
 log_irq db '00000000',13,10,'DMA='
 log_dma db '00000000',13,10,'DSP major/minor='
@@ -991,15 +1219,32 @@ log_irqs db '00000000',13,10,'PCM wraps='
 log_loops db '00000000',13,10,'DMA half fills='
 log_fills db '00000000',13,10,'Music starts='
 log_starts db '00000000',13,10,'Music stops='
-log_stops db '00000000',13,10,'Speaker FX requests='
+log_stops db '00000000',13,10,'Digital FX requests='
 log_fx db '00000000',13,10,'EMS errors='
 log_errors db '00000000',13,10,'EXEC error='
 log_exec db '00000000',13,10,'DMA physical address='
 log_buffer db '00000000',13,10,'PCM byte count='
 log_size db '00000000',13,10
+ db 'Mixed FX samples='
+log_mixed db '00000000',13,10,'Clipped output samples='
+log_clipped db '00000000',13,10,'Unsupported FX requests='
+log_invalid db '00000000',13,10,'FX counts by DOS ID 0..24:',13,10
+log_counts times 25 db '00000000 '
+ db 13,10
+ db 'Music volume (0..10)='
+log_music_level db '00000000',13,10,'Effects volume (0..10)='
+log_fx_level db '00000000',13,10,'F5/F6/F7/F8 key counts='
+log_volume_keys times 4 db '00000000 '
+ db 13,10
 log_end:
+%include "volume.inc"
+%include "fx_assets.inc"
+music_table_offset dw 0
+fx_table_offset dw 0
+%include "sb_volume_tables.inc"
+mix_buffer times 512 dw 0
 align 16
-irq_stack times 1024 db 0
+irq_stack times 2048 db 0
 irq_stack_end:
 stack times 2048 db 0
 stack_end:

@@ -14,3 +14,11 @@ __pycache__/
 *.exe
 *.zip
 .DS_Store
+
+*.bnk
+*.BNK
+*.seq
+*.SEQ
+*.log
+*.LOG
+!test-evidence.zip

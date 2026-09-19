@@ -1,0 +1,80 @@
+bits 16
+org 100h
+mov sp,0ffeh
+push cs
+pop ds
+mov ax,cs
+mov es,ax
+mov bx,100h
+mov ah,4ah
+int 21h
+mov al,[82h]
+mov [filename],al
+xor ax,ax
+mov es,ax
+mov si,20h
+mov di,data
+mov cx,8
+.l:
+mov al,[es:si]
+mov [di],al
+inc si
+inc di
+loop .l
+mov si,34h
+mov cx,4
+.l2:
+mov al,[es:si]
+mov [di],al
+inc si
+inc di
+loop .l2
+mov si,3ch
+mov cx,4
+.l3:
+mov al,[es:si]
+mov [di],al
+inc si
+inc di
+loop .l3
+mov si,204h
+mov cx,4
+.l4:
+mov al,[es:si]
+mov [di],al
+inc si
+inc di
+loop .l4
+mov si,208h
+mov cx,4
+.l5:
+mov al,[es:si]
+mov [di],al
+inc si
+inc di
+loop .l5
+in al,21h
+mov [di],al
+inc di
+mov ah,42h
+int 67h
+mov [di],bx
+mov bx,0ffffh
+mov ah,48h
+int 21h
+mov [di+2],bx
+mov dx,filename
+xor cx,cx
+mov ah,3ch
+int 21h
+mov bx,ax
+mov dx,data
+mov cx,29
+mov ah,40h
+int 21h
+mov ah,3eh
+int 21h
+mov ax,4c00h
+int 21h
+filename db 'B.BIN',0
+data times 29 db 0

@@ -1,92 +1,54 @@
-# Implementation and verification
+# Unified audio and volume implementation
 
-## Version and patch scope
+## Shared executable
 
-Input `XENON2.EXE`: 123,496 bytes; SHA-256:
+`XENON2.COM` is a DOS startup selector. It shrinks its allocation, EXECs `X2SB.COM` or `X2GUS.COM`, and returns the driver's exit code. Both drivers EXEC the same `X2GAME.EXE`. Only the selected driver allocates audio resources.
 
-`c623def4ac6bcd009a3a7295a671141be254d0d7641c02f5f6d048b290d44415`
-
-The patch changes exactly 20 bytes: the operand of each listed `CD 80` instruction becomes `81`. Executable size, MZ header, relocation table, and all other bytes remain unchanged. Offsets below are absolute file offsets, not runtime segment offsets.
+The version-checked patch changes twenty `INT 80h` calls to `INT 81h`, as in the prior builds. File offsets:
 
 ```
-000D30 000D87 0020F7 00296C 00450B 0047A8 0047CA 0048A2
-004911 00498C 00546E 005474 0054F7 005D53 006069 00611D
-00680E 00683C 009383 00DEBA
+0D30 0D87 20F7 296C 450B 47A8 47CA 48A2 4911 498C
+546E 5474 54F7 5D53 6069 611D 680E 683C 9383 DEBA
 ```
 
-Useful sites:
+There is one additional instruction replacement at **file 0x66F3** (runtime main CS:5EF3): `E4 60` (`IN AL,60h`) becomes `CD 82` (`INT 82h`). This is the game's keyboard IRQ handler's scan-code read. Overall, 22 bytes differ from the original: twenty audio operands and two keyboard instruction bytes. The executable's size and relocation table are unchanged.
 
-| File offset | Observed role |
-|---|---|
-| `0x6069` | AH=2, AL=0: credits music start |
-| `0x611D` | AH=1: credits music stop |
-| `0x450B` | AH=2, AL=0: level music start, conditional on music option |
-| `0x20F7` | AH=1: stop observed at level/death transition |
-| `0x683C` | AH=3: original speaker effect request |
-| `0x680E` | AH=0: native audio tick from timer path |
-| `0x546E`, `0x5474` | stop followed by AH=2, AL=1 game-over music |
-| `0x0D87` | native sound stop on normal exit |
-| `0x668A`–`0x66E8` | original timer installation/removal code |
+## Keyboard/volume handler
 
-The native sound driver's segment base corresponds to file offset `0x15390`. The original INT 80 handler remains installed by the game. The launcher uses INT 81 and forwards native calls to INT 80. For the main song, it calls the original initialization, then AH=20h/AL=0 to disable native music without disabling the effects path, and starts PCM playback. Stop requests halt PCM and are forwarded. Native timer frequency/chaining is not patched.
+`volume.inc` is shared by both drivers. Each installs and later restores INT 82h. The handler reads port 60h once, adjusts the appropriate level for set-1 make codes 3Fh/40h/41h/42h (F5/F6/F7/F8), and returns the original scan code for other keys. The four function keys and their break codes return FFh, an ignored break code, so they do not become menu input or reassignable game actions.
 
-The runtime trace confirmed calls from `0x6069`, `0x611D`, `0x450B`, `0x20F7`, and `0x0D87` in a music-enabled session. Temporary trace instrumentation was removed from the delivered binary. The menu initially says MUSIC OFF; switching it on triggers the original level-music call, so no extra patch to the music preference or level transition was necessary.
+The game's IRQ handler still owns keyboard acknowledgement through port 61h and the PIC EOI. No second IRQ1 handler is installed and no BIOS keystrokes are polled. The wrapper preserves registers and flags except AL, matching the original IN instruction's interface. It performs no DOS calls, mixing, or GUS register writes inside the keyboard interrupt.
 
-## Audio provenance
+Volumes are independent integer levels 0..10, initialized to 8, saturating at both ends. Changes are effective while effects/music are already running. They do not alter the music-playing flag or sample positions. INT 81h still replaces the original PC-speaker sound API.
 
-Disk 1 of the supplied two-disk Amiga release contains packed `XENON-II`. Its decoded image is 287,946 bytes, SHA-256:
+## Sound Blaster scaling
 
-`fd28f362956d89a6fbf87bffd5242eef099ee63b82de681ba01f917ff0b62c6b`
+`sb_volume_tables.inc` contains 11 x 256 signed-word rows for music and 11 x 256 for effects. For music byte x and level L, gain is `trunc((x-128)*L/20)`, retaining half-amplitude music headroom at L=10. For signed effect byte x, gain is `trunc(x*L/10)`. Effects were already resampled/scaled by 0.65 during asset generation.
 
-Within that decoded image:
+The IRQ mixer chooses the row for each group once per 512-byte refill. A signed 16-bit buffer sums music and up to four effects, then saturates once to 8-bit unsigned PCM. At level zero each row is exactly zero. Lookup tables avoid runtime division per sample. The 1,024-byte DMA ring retains the existing ~47–93 ms buffering latency. Tables add 11,264 bytes of resident data; they contain no original game/audio payload.
 
-| Offset | Data |
-|---|---|
-| `0x019B9E` | custom four-channel music module base |
-| `0x01A428` | song/sequence data |
-| `0x01B780` | sample bank record start |
+`X2AUDIO.PCM` contains 2,105,493 unsigned music bytes followed by 88,909 signed effect bytes. Total 2,194,402 bytes, loaded into 134 EMS pages. The loop boundary remains at the end of the music, not the bank.
 
-It is a custom sequencer, not a standard ProTracker MOD. The bank has 20 sample records totaling 61,352 PCM bytes; this song uses samples 0–18. The previous renderer validation matched 19,161 ticks, 5,570 note events, and 122,028 register writes against the original 68000 player over two loops. The cycle is 9,580 50-Hz ticks, or 191.6 seconds. These facts and the extraction work are documented in the earlier renderer and disk reports.
+## GUS scaling
 
-## Driver design
+GUS volume registers are logarithmic. For nonzero L, the driver subtracts `round(-256*log2(L/10))*16` from the base voice volume, flooring underflow to zero. Level zero explicitly writes zero volume. The existing music envelope is scaled at every 50 Hz command update. The base volume of each effect voice is retained; a keyboard-change flag causes all eight effect voices to refresh on the next timer tick, so active sounds change as well as newly started sounds.
 
-The entire unsigned 8-bit mono track is loaded into EMS before executing the game. It needs 129 16-KiB EMS pages. A separate 16-KiB conventional allocation supplies an 8-KiB DMA window that cannot cross a physical 64-KiB boundary. The launcher itself is 6,256 bytes on disk.
+The signed sample bank remains 124,496 bytes; 9,580 x 32-byte music command frames occupy 19 EMS pages. GF1 voices 0..3 play music and 4..11 effects, with 14 active chip voices for a 44.1 kHz GF1 clock. PIO upload and the game's existing timer drive playback; no GUS DMA or IRQ is required.
 
-- DSP auto-initialize 8-bit playback (`1Ch`), block interrupt every 4,096 samples, 8,192-byte DMA ring.
-- Time constant 165: nominal `1,000,000 / 91 = 10,989.011 Hz`; the source was resampled to integer 10,989 Hz.
-- DSP IRQ fills the completed buffer half, with its own stack. No DOS file I/O occurs in the IRQ.
-- EMS mapping is saved/restored around copies; copies handle EMS-page and track-end boundaries.
-- Original IRQ vector, INT 81 vector, selected PIC mask bit, and SB Pro mono/stereo mixer bit are restored at exit. Allocations are released and DMA playback is stopped.
-- File reads are checked for short reads. Initialization failures report an error. EMS refill errors stop playback and produce a nonzero launcher exit code.
+## Amiga effect provenance
 
-This approach avoids real-time mixing load, but trades roughly 2.1 MB of EMS for that simplicity. DSP reset on exit stops playback; this is not a transparent wrapper around another concurrently active sound application.
+The separate 18-sample effect bank begins at decompressed executable offset **0x2B69C**. Records contain a big-endian byte length, big-endian rate, then signed 8-bit PCM. Initialization is near **0x1AE16**, descriptors near **0x1AF52**, raw dispatch near **0x1B072**. The separate synthesized-effect table near 0x1B392 is not emulated.
 
-## Tests performed
+DOS sound ID 2 comes from the firing routine near runtime CS:4DF4–4E18; ID 6 follows debris creation near CS:1DD7/1DDD. Amiga debris routines select raw sample 3. The provisional DOS ID 0..24 map is:
 
-Development execution tests used a headless DOSBox Pure libretro core on macOS. The project owner subsequently reported successful playback on a real 386 with a PicoGUS in Sound Blaster mode. CPU speed, DOS/EMS versions, PicoGUS firmware and full-playthrough coverage have not been recorded. This confirms that reported configuration, not every original Sound Blaster card.
+```
+0,2,0,1,6,4,3,5,6,7,8,9,10,11,12,13,14,15,16,17,2,4,5,7,9
+```
 
-| Test | Result |
-|---|---|
-| SB16 A220/I7/D1, standalone eight-second playback | Sound captured; 21 DMA interrupts, 23 filled halves, zero EMS errors; returned to DOS |
-| Final SB16 game build: credits, MUSIC ON, level 1, firing/effects, death/ready transition, F10 | 48 DMA interrupts, 52 half-buffer fills, 2 music starts, 12 native effect requests, zero EMS errors, zero EXEC errors; returned to DOS |
-| Final SB2 A220/I5/D3, forced loop | DSP 2.01; 21 DMA interrupts, 23 half-buffer fills, 1 wrap, zero EMS errors |
-| Before/after standalone resource audit | Byte-identical snapshots |
-| Before/after final game resource audit | Byte-identical snapshots |
-| EMS disabled | Explicit insufficient/unavailable EMS error, returned to DOS |
-| Sound Blaster disabled | Explicit DSP detection error, returned to DOS |
-| Binary patch comparison | Exactly the 20 documented operands differ; original executable hash unchanged |
+ID 0 is ignored. The raw shot sample choice and most non-explosion assignments remain provisional. Both generators use the same mapping.
 
-The resource snapshot records INT 08h, 09h, 0Dh, 0Fh, and 81h vectors; master PIC mask; free EMS pages; and the largest available conventional memory block. The final game before/after snapshots both equal:
+## Cleanup and scope
 
-`a5fe00f087e900f0e01200f0f400700000000000f8a403669d`
+Both drivers restore INT 81h/82h, release EMS, restore speaker enable bits, and stop their audio. SB additionally restores its IRQ vector/PIC mask and mono mixer setting; GUS disables its voices/DAC. Neither preserves another application's in-progress sound-card playback. The 29-byte audit includes INT 8/9/0D/0F/81/82, PIC mask, free EMS pages, and largest free DOS allocation.
 
-The standalone captured audio was compared locally to the source PCM at several positions: best local correlations were approximately 0.94–0.99, with smoothly changing alignment rather than 4,096-byte jumps. This supports correct buffer progression; it is not a proof of zero glitches under all loads. The emulator capture showed small sample-clock/filter differences from the source.
-
-Audio recordings and game graphics are not included in this public repository.
-
-## Concrete next work
-
-1. Play through later levels, the shop, game-over, and pause/resume transitions; exercise repeated starts/stops and lower CPU speeds.
-2. Test actual SB2/Pro/SB16 hardware, EMS managers, alternate base addresses, and DMA 0. Tighten DSP timeout/restart handling if those tests reveal failures.
-3. For lower memory requirements, port the validated custom sequencer and four-channel sample mixer to DOS. The sample bank is about 61 KB; this would replace the 2.1 MB prerendered EMS track, at additional CPU cost.
-4. For AdLib, design OPL2 instruments and a channel-allocation/percussion arrangement, then implement an OPL sequencer backend. The Amiga PCM samples cannot be used directly as OPL2 instruments.
+No on-screen overlay, persistent volume settings, firmware switching, or hardware auto-detection fallback is implemented. The selector chooses only a driver; PicoGUS must be set to that hardware mode before launch.

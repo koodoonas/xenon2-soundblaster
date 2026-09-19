@@ -1,62 +1,48 @@
-Experimental prototype: emulator test evidence
+2026-09-19 — unified SB/GUS selection and live volume controls
 
-Hardware follow-up: pgeo101 reported successful playback on a real 386 with PicoGUS in Sound Blaster mode. Exact settings and full-playthrough coverage were not supplied.
+DOSBox Pure libretro, normal core, 20,000 cycles, 16 MB RAM/EMS.
+PC speaker disabled. Final packaged tests enable both emulated cards:
+SB16 base 220h IRQ7 DMA1; GUS base 240h IRQ5 DMA3.
 
+PASS: source prepare.py builds the shared patched game and both drivers'
+audio banks from the original DOS folder/Amiga Disk 1 and prior music PCM.
+Packaged COM/EXE/bank files match development artifacts exactly.
+Original EXE hash unchanged; patched size unchanged, exactly 22 bytes differ.
+All three COM launchers compile successfully with NASM.
 
-finalgame-results.log
-X2SB prototype diagnostics (hexadecimal values)
-Base=00000220
-IRQ=00000007
-DMA=00000001
-DSP major/minor=00000405
-DMA interrupts=00000030
-PCM wraps=00000000
-DMA half fills=00000034
-Music starts=00000002
-Music stops=00000004
-Speaker FX requests=0000000C
-EMS errors=00000000
-EXEC error=00000000
-DMA physical address=00003300
-PCM byte count=00202095
+PASS: startup selector 1 loads SB, 2 loads GUS; both EXEC X2GAME.EXE.
+Selector Escape returns to DOS without launching a driver.
+Each final package gameplay test ran 5900 emulator frames (~84.2 s),
+including music enable, menu navigation, gameplay, firing/explosions,
+volume key presses, and normal F10 exit through both launcher layers.
+Each backend recorded 12 digital effects, two music starts,
+no unsupported FX IDs, no EMS errors, and no EXEC errors.
+SB final gameplay: 1702 DMA IRQs, 1704 half fills, 3 saturated output samples.
+GUS final gameplay: 3839 50 Hz updates.
 
+PASS: independent volume changes in both drivers:
+start 8/8; F5 twice + F6 once -> music 7;
+F7 three times + F8 once -> effects 6.
+Logged key counts: 2,1,3,1; final levels 7/6 for both backends.
 
-finalloop-results.log
-X2SB prototype diagnostics (hexadecimal values)
-Base=00000220
-IRQ=00000005
-DMA=00000003
-DSP major/minor=00000201
-DMA interrupts=00000015
-PCM wraps=00000001
-DMA half fills=00000017
-Music starts=00000001
-Music stops=00000001
-Speaker FX requests=00000000
-EMS errors=00000000
-EXEC error=00000000
-DMA physical address=00003300
-PCM byte count=00202095
+PASS: clamp/mute/resume tests in both drivers:
+12 F5 and 12 F7 presses drive both levels to zero without underflow;
+12 F8 followed by 12 F6 presses restore to 10 without overflow.
+Logged counts: 12/12/12/12, final levels 10/10.
+Captured mute window (emulator frames 2180..2280): peak exactly 0 on both.
+Before mute (1908..1930): SB peak 16896, GUS peak 6637.
+After levels raised (3150..3300): SB peak 8448, GUS peak 14691.
+Captures are signed 16-bit stereo at 48 kHz; peak limit 32768.
 
+PASS: 29-byte before/after audits identical for gameplay and limits tests:
+INT 8,9,0D,0F,81,82 vectors; PIC mask; free EMS pages;
+largest conventional-memory block. Keyboard handler restored on exit.
+Audit offsets: 0..23 six far vectors; 24 PIC mask; 25..26 EMS free pages;
+27..28 largest conventional block, little-endian.
 
-game-audit-result.txt
-Before: a5fe00f087e900f0e01200f0f400700000000000f8a403669d
-After: a5fe00f087e900f0e01200f0f400700000000000f8a403669d
-Identical: True
+Mac .command launcher: syntax checked, points at combined folder/config.
+DOSBox-X GUI launch is not verified in this automation environment.
 
-Public setup tool test: reconstructed installation from supplied inputs; launcher and patched EXE byte-identical to tested prototype. Direct WAV-to-PCM rendering differs from the earlier audio conversion by approximately 0.592 unsigned 8-bit levels RMS. Regenerated track passed eight-second emulator playback with no EMS errors.
-X2SB prototype diagnostics (hexadecimal values)
-Base=00000220
-IRQ=00000007
-DMA=00000001
-DSP major/minor=00000405
-DMA interrupts=00000015
-PCM wraps=00000000
-DMA half fills=00000017
-Music starts=00000001
-Music stops=00000001
-Speaker FX requests=00000000
-EMS errors=00000000
-EXEC error=00000000
-DMA physical address=00003300
-PCM byte count=00202095
+No new physical SB/GUS/PicoGUS test. Earlier SB music-only hardware report
+is not evidence for this release. Full all-level coverage, every effect
+mapping, and exact Paula waveforms remain outside the verified scope.

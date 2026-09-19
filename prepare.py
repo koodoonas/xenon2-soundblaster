@@ -55,13 +55,14 @@ def main():
     ap.add_argument('--dos', type=Path, required=True, help='Your extracted DOS game directory')
     ap.add_argument('--amiga', type=Path, required=True, help='Supported Amiga Disk 1 ADF or ZIP')
     ap.add_argument('--output', type=Path, default=Path('game'), help='New directory; must not already exist')
+    ap.add_argument('--music', type=Path, help='Optional existing X2MUSIC.PCM from the previous SB build')
     args = ap.parse_args()
     if args.output.exists():
         ap.error('Output already exists; choose a new folder to protect existing files')
     exe = next((p for p in args.dos.iterdir() if p.name.upper() == 'XENON2.EXE'), None)
     if exe is None or digest(exe.read_bytes()) != SHA256:
         ap.error('Unsupported DOS executable; see README for the expected SHA-256')
-    if not shutil.which('ffmpeg'):
+    if args.music is None and not shutil.which('ffmpeg'):
         ap.error('FFmpeg must be installed and available on PATH')
     packed = extract(args.amiga)
     with tempfile.TemporaryDirectory(prefix='xenon2-build-') as tmp:
@@ -71,14 +72,23 @@ def main():
         data = (tmp/'unpacked').read_bytes()
         if digest(data) != UNPACKED_SHA:
             raise ValueError('Decompressed executable verification failed')
-        (tmp/'music-data.bin').write_bytes(data[0x19b9e:0x2a7e0])
-        print('Rendering one 191.6-second music loop. This may take a few minutes.', flush=True)
-        subprocess.run([sys.executable, str(ROOT/'xenon_music.py'), str(tmp/'music.wav'), '--data', str(tmp/'music-data.bin'), '--seconds', '191.6'], check=True)
-        subprocess.run(['ffmpeg', '-v', 'error', '-i', str(tmp/'music.wav'), '-ac', '1', '-ar', '10989', '-f', 'u8', str(tmp/'X2MUSIC.PCM')], check=True)
+        if args.music is not None:
+            shutil.copyfile(args.music, tmp/'X2MUSIC.PCM')
+        else:
+            (tmp/'music-data.bin').write_bytes(data[0x19b9e:0x2a7e0])
+            print('Rendering one 191.6-second music loop. This may take a few minutes.', flush=True)
+            subprocess.run([sys.executable, str(ROOT/'xenon_music.py'), str(tmp/'music.wav'), '--data', str(tmp/'music-data.bin'), '--seconds', '191.6'], check=True)
+            subprocess.run(['ffmpeg', '-v', 'error', '-i', str(tmp/'music.wav'), '-ac', '1', '-ar', '10989', '-f', 'u8', str(tmp/'X2MUSIC.PCM')], check=True)
+        subprocess.run([sys.executable, str(ROOT/'build_audio.py'), str(tmp/'unpacked'), str(tmp/'X2MUSIC.PCM'), str(tmp/'audio')], check=True)
+        if (tmp/'audio'/'fx_assets.inc').read_bytes() != (ROOT/'fx_assets.inc').read_bytes():
+            raise ValueError('Generated metadata differs from the prebuilt launcher; rebuild the launcher')
+        subprocess.run([sys.executable, str(ROOT/'build_gus_assets.py'), str(tmp/'unpacked'), str(tmp/'gus')], check=True)
+        if (tmp/'gus'/'assets.inc').read_bytes() != (ROOT/'assets.inc').read_bytes():
+            raise ValueError('GUS metadata differs; rebuild with matching metadata')
         # mkdir without exist_ok also protects against a destination created during rendering.
         args.output.mkdir(parents=True)
         for p in args.dos.iterdir():
-            if p.name.upper() in ('XENON2.EXE', 'X2SB.EXE', 'X2SB.COM', 'X2MUSIC.PCM', 'START.BAT'):
+            if p.name.upper() in ('XENON2.EXE', 'X2SB.EXE', 'X2SB.COM', 'X2MUSIC.PCM', 'X2AUDIO.PCM', 'X2GUS.EXE', 'X2GUS.COM', 'X2GUS.BNK', 'X2GUS.SEQ', 'X2GAME.EXE', 'XENON2.COM', 'START.BAT'):
                 continue
             if p.is_symlink():
                 raise ValueError('Symlinks in the DOS directory are not supported')
@@ -86,11 +96,13 @@ def main():
                 shutil.copytree(p, args.output/p.name)
             else:
                 shutil.copyfile(p, args.output/p.name)
-        patch(exe, args.output/'X2SB.EXE')
-        for name in ['X2SB.COM', 'START.BAT', 'dosbox-settings.conf']:
+        patch(exe, args.output/'X2GAME.EXE')
+        for name in ['XENON2.COM', 'X2SB.COM', 'X2GUS.COM', 'START.BAT', 'dosbox-settings.conf']:
             shutil.copyfile(ROOT/name, args.output/name)
-        shutil.copyfile(tmp/'X2MUSIC.PCM', args.output/'X2MUSIC.PCM')
-    print(f'Ready: {args.output.resolve()}. Run START.BAT in DOS and select MUSIC ON.')
+        shutil.copyfile(tmp/'audio'/'X2AUDIO.PCM', args.output/'X2AUDIO.PCM')
+        for name in ['X2GUS.BNK', 'X2GUS.SEQ']:
+            shutil.copyfile(tmp/'gus'/name, args.output/name)
+    print(f'Ready: {args.output.resolve()}. Run START.BAT, select SB or GUS, and select MUSIC ON in the game menu.')
 
 if __name__ == '__main__':
     main()

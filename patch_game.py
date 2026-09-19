@@ -16,9 +16,12 @@ def patch(src, dest):
         if result[offset:offset+2] != b'\xcd\x80':
             raise ValueError(f'Unexpected instruction at {offset:#x}')
         result[offset+1] = 0x81
+    if result[0x66f3:0x66f5] != b'\xe4\x60':
+        raise ValueError('Unexpected keyboard read instruction')
+    result[0x66f3:0x66f5] = b'\xcd\x82'
     with dest.open('xb') as f:  # refuse to overwrite originals or an existing output
         f.write(result)
-    print(f'Created {dest}: {len(OFFSETS)} interrupt operands changed')
+    print(f'Created {dest}: {len(OFFSETS)} audio interrupt operands changed; keyboard read redirected to INT82')
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('source',type=Path)

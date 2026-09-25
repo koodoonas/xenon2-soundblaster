@@ -1,0 +1,22 @@
+name: Build X2GUS hardware test
+
+on:
+  push:
+    branches:
+      - build-gf1-hw-test
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install NASM
+        run: sudo apt-get update && sudo apt-get install -y nasm
+      - name: Build X2GUS.COM
+        run: nasm -f bin x2gus.asm -o X2GUS.COM
+      - name: Hash
+        run: sha256sum X2GUS.COM
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x2gus-hw-test
+          path: X2GUS.COM

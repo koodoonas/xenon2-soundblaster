@@ -43,6 +43,8 @@ Audit offsets: 0..23 six far vectors; 24 PIC mask; 25..26 EMS free pages;
 Mac .command launcher: syntax checked, points at combined folder/config.
 DOSBox-X GUI launch is not verified in this automation environment.
 
-No new physical SB/GUS/PicoGUS test. Earlier SB music-only hardware report
-is not evidence for this release. Full all-level coverage, every effect
+Physical hardware report (2026-09-25): pgeo101 successfully tested unified
+GUS mode on a real 486 at 66 MHz with PicoGUS in GUS mode.
+The unified SB mode and individual F5-F8 checks have no separate physical
+hardware report. The earlier 386/PicoGUS SB report covers the music-only build. Full all-level coverage, every effect
 mapping, and exact Paula waveforms remain outside the verified scope.

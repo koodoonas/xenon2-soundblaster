@@ -119,17 +119,19 @@ From the generated game directory, run `X2SB.COM /TEST` or `X2GUS.COM /TEST` for
 - **GUS:** native GF1 sample playback; four stereo-positioned music voices plus eight centered effect voices. Samples reside in card RAM; music commands reside in EMS. No GUS DMA/IRQ is used.
 - Both use the same 18 raw Amiga sampled effects. Shooting/explosion events are intercepted, but the firing sample choice and most other mappings remain provisional. Synthesized Amiga effects receive sample substitutes. The game-over cue is also a substitute.
 - The song repeats its fixed 191.6-second first loop. This is not an exact emulation of every Paula behavior or original sequencer state across repeats.
-- This release passed DOSBox Pure tests. The earlier real 386/PicoGUS SB test applies to the older music-only build, not this unified release. Physical-hardware validation remains outstanding.
+- This release passed DOSBox Pure tests. The earlier real 386/PicoGUS SB test applies to the older music-only build, not this unified release. GUS mode was successfully tested by pgeo101 on a real 486 at 66 MHz with PicoGUS in GUS mode. The unified SB mode still awaits a physical-hardware report.
 
 After exit, `X2SB.LOG` or `X2GUS.LOG` records diagnostics, final volume levels, and F5/F6/F7/F8 counts in hexadecimal. Volume value A means 10/10, or 100%.
 
 ## Hardware demonstration and test status
 
+**Unified GUS hardware report (2026-09-25):** pgeo101 successfully tested GUS mode on a real **486 at 66 MHz with PicoGUS in GUS mode**.
+
 **Earlier SB prototype hardware report:** Tested successfully on a real **386 with a PicoGUS in Sound Blaster mode**.
 
 [Watch the earlier Sound Blaster prototype demonstration](https://www.youtube.com/watch?v=VaM9JKJuMTs)
 
-That video and hardware report concern the earlier music-only version. They do not validate the new digital-effects mixer, native GUS driver, or F5–F8 controls on physical hardware. The unified release has passed the emulator tests in [TEST-RESULTS.txt](TEST-RESULTS.txt); detailed logs, key schedules, and resource audits are in [test-evidence.zip](test-evidence.zip).
+That video and hardware report concern the earlier music-only version. The new GUS hardware result is recorded above. The earlier video does not document this unified build; the unified SB mixer and individual F5–F8 checks have no separate physical-hardware report. The unified release has passed the emulator tests in [TEST-RESULTS.txt](TEST-RESULTS.txt); detailed logs, key schedules, and resource audits are in [test-evidence.zip](test-evidence.zip).
 
 ## Build from your own files
 
@@ -169,7 +171,7 @@ Please open an issue with CPU/speed, DOS version, EMS manager, sound card/firmwa
 
 ## Credits
 
-Created with assistance from OpenAI Codex for reverse engineering, implementation, and emulator testing; earlier real-machine testing by pgeo101. This is an unofficial fan experiment, unaffiliated with the original developers or publishers. Original credits include The Bitmap Brothers, The Assembly Line, Bomb the Bass, and David Whittaker.
+Created with assistance from OpenAI Codex for reverse engineering, implementation, and emulator testing; real-machine SB prototype and unified GUS testing by pgeo101. This is an unofficial fan experiment, unaffiliated with the original developers or publishers. Original credits include The Bitmap Brothers, The Assembly Line, Bomb the Bass, and David Whittaker.
 
 ## License
 

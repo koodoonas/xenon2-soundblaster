@@ -1,5 +1,10 @@
 # Changelog
 
+## GUS hardware test report — 2026-09-25
+
+- pgeo101 successfully tested unified GUS mode on a real 486 at 66 MHz with PicoGUS in GUS mode.
+- Updated hardware status in the README and test results, including the playable ZIP documentation. Runtime files are unchanged.
+
 ## Complete playable download — 2026-09-25
 
 - Added the ready-to-run ZIP with X2AUDIO.PCM, X2GUS.SEQ, X2GUS.BNK, matching executable/drivers, and all game data.
@@ -15,7 +20,7 @@
 - Separate 0–100% levels in 10% steps, initialized to 80%.
 - Native GUS sample voices; SB software mixing with four effect voices.
 - Updated asset builder, emulator configuration, technical notes, and test evidence.
-- Experimental: new functionality is emulator-tested; physical validation remains outstanding.
+- Experimental: new functionality was emulator-tested at release; see the subsequent GUS hardware report above.
 
 ## Original Sound Blaster prototype
 

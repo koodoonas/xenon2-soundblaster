@@ -22,3 +22,5 @@ __pycache__/
 *.log
 *.LOG
 !test-evidence.zip
+
+!Xenon2-SB-GUS-Unified-experimental.zip

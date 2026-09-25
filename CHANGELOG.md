@@ -1,5 +1,11 @@
 # Changelog
 
+## Complete playable download — 2026-09-25
+
+- Added the ready-to-run ZIP with X2AUDIO.PCM, X2GUS.SEQ, X2GUS.BNK, matching executable/drivers, and all game data.
+- Added direct download and extraction instructions; building is optional.
+- Runtime binaries and audio are unchanged from the tested unified build.
+
 ## Unified experimental update — 2026-09-19
 
 - One startup menu: Sound Blaster or Gravis UltraSound.

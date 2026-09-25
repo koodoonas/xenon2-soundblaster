@@ -4,9 +4,27 @@
 
 ## Get the unified version
 
-Download this repository with **Code → Download ZIP**, extract it, then follow [Build from your own files](#build-from-your-own-files). This repository includes prebuilt launchers and all build tools, but **no original game executable, disk image, music, samples, or rendered soundtrack**. Supply your own supported copies to generate the playable folder.
+**[Download the complete playable ZIP](https://github.com/pgeo101/xenon2-soundblaster/raw/refs/heads/main/Xenon2-SB-GUS-Unified-experimental.zip)** (about 2 MB).
 
-**Upgrading from the original SB prototype:** build into a fresh directory. Use your original DOS installation as `--dos`; do not mix an old patched EXE with the new drivers. The unified game has an additional keyboard patch for the volume controls. You may reuse the older `X2MUSIC.PCM` with `--music`.
+1. Extract the ZIP into a fresh folder, keeping the S1–S5 subfolders.
+2. In DOS or DOSBox-X, enter the extracted `xenon2-unified-experimental` folder.
+3. Configure your sound card as described below, then run **START.BAT** and choose SB or GUS.
+4. Enable **MUSIC ON** in the game's menu.
+
+**No build step, Python, FFmpeg, or separate audio download is needed to play.** The archive includes:
+
+| File | Contents |
+| --- | --- |
+| `X2AUDIO.PCM` | Sound Blaster music and digital effects (2,194,402 bytes) |
+| `X2GUS.SEQ` | Gravis UltraSound music sequence (306,560 bytes) |
+| `X2GUS.BNK` | Gravis UltraSound music/effect samples (124,496 bytes) |
+| `X2GAME.EXE` | Matching patched game executable |
+| `START.BAT`, `XENON2.COM`, `X2SB.COM`, `X2GUS.COM` | Selector and audio drivers |
+| Game data and `S1`–`S5` | All five levels |
+
+Keep these files together. If you use **Code → Download ZIP**, extract the playable ZIP inside that repository download before launching; the repository's loose COM files alone are not a complete game. Checksums are in `SHA256SUMS.txt`.
+
+**Upgrading:** extract into a fresh folder; do not mix older patched EXEs, drivers, or audio banks with this version. Building from original files remains an optional developer workflow below.
 
 ## Start
 
@@ -115,7 +133,7 @@ That video and hardware report concern the earlier music-only version. They do n
 
 ## Build from your own files
 
-The source package contains added code, metadata, and prebuilt COM launchers; it excludes original game and audio payloads. Requires Python **3.10+** and **FFmpeg on PATH**. Download/extract the repository first. Supply the complete original DOS installation, including the S1–S5 folders, and Disk 1 of the supported Amiga two-disk BS1 release (`Xenon II - Megablast (1989)(ImageWorks)[cr BS1][t +3 BS1](Disk 1 of 2)`) as an ADF or a ZIP containing it. Disk 2 is not needed for audio extraction.
+This optional workflow rebuilds the playable folder from your original files. The ready-to-run ZIP above already includes the generated audio and game data. Rebuilding requires Python **3.10+** and **FFmpeg on PATH**. Download/extract the repository first. Supply the complete original DOS installation, including the S1–S5 folders, and Disk 1 of the supported Amiga two-disk BS1 release (`Xenon II - Megablast (1989)(ImageWorks)[cr BS1][t +3 BS1](Disk 1 of 2)`) as an ADF or a ZIP containing it. Disk 2 is not needed for audio extraction.
 
 From the repository directory:
 
@@ -155,4 +173,4 @@ Created with assistance from OpenAI Codex for reverse engineering, implementatio
 
 ## License
 
-Added launchers, player code, tools, and documentation: MIT License, copyright 2026 pgeo101. Original game code, music, samples, and artwork remain their respective owners' material and are not covered by MIT. Share the separate source package; the prepared local package contains assets from your supplied game copies.
+Added launchers, player code, tools, and documentation: MIT License, copyright 2026 pgeo101. Original game code, music, samples, and artwork remain their respective owners' material and are not covered by MIT. The playable archive includes original game and audio material; the MIT license applies only to the added code, tools, and documentation.

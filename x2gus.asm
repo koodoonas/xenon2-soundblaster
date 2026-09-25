@@ -769,9 +769,11 @@ effect_start:
  mov ax,[si+10]
  mov [fx_volumes+di],ax
  call voice_sample
- mov bx,0ch
- mov al,7
- call reg_write8
+ ; Genuine GF1 hardware needs the effect volume re-latched after GO. Music
+ ; already gets a post-start 0x09 write from music_tick; one-shot effects did
+ ; not, which left them silent on a tested GUS MAX while PicoGUS played them.
+ mov byte [volume_dirty],1
+ call refresh_fx_volume
  inc byte [next_fx]
  cmp byte [next_fx],12
  jb .count
